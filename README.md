@@ -1,89 +1,153 @@
-# rtl9210-macos-force-bot
+# Mac SSD Enclosure Disconnect Fix
 
-A codeless macOS kernel extension that makes macOS drive **Realtek RTL9210 (USB ID `0BDA:9210`) NVMe enclosures in Bulk-Only Transport (BOT) mode instead of UAS**, using the same `Force BOT Protocol` quirk Apple already applies to other problem enclosures.
+**Does your external SSD keep disconnecting from your Mac during big copies?**
 
-It contains no code: one `Info.plist` with one IOKit personality.
+You might be hitting a known problem between macOS and one very common USB SSD enclosure chip. This repo is a small, undoable fix for it.
 
-## The problem
+## Is this you?
 
-With some RTL9210 enclosures (seen here with a UGREEN enclosure and a DRAM-less ADATA Legend 710 SSD), macOS drops the drive during long writes:
+- Your NVMe SSD sits in a USB-C enclosure (UGREEN, ORICO, Sabrent and many no-name brands).
+- Copying a lot of data (tens of GB) makes it **freeze, disappear, or show "Disk Not Ejected Properly"**.
+- **The same drive works fine on Windows.**
 
-- Kernel log: `AppleUSBXHCIStreamingEndpoint ... no transfer ring claimed event`, then `status 0xe00002d6 (timeout)`, then `USB device ... will be reset!` and `hardware connection lost`.
-- The volume unmounts and in-flight writes fail.
-- The same drive and enclosure on Windows wrote 100 GB at a steady ~633 MB/s with no errors, peaking at 58 °C. SMART was clean (0% used, 0 media errors).
+## Check if your enclosure is affected (30 seconds)
 
-## Why it happens
+1. Plug the enclosure into your Mac.
+2. Hold **Option** and click the Apple menu  → **System Information**.
+3. Click **USB** in the sidebar, then click your enclosure.
+4. Look at the numbers:
+   - **Vendor ID: `0x0bda`** (Realtek)
+   - **Product ID: `0x9210`**
 
-Taken from the macOS 27 kernel cache:
+**If both match, this fix is for you.** If they don't, this fix won't do anything for your enclosure.
 
-1. Apple's UAS driver (`IOUSBMassStorageUASDriver`) gives each command **30 s** (`Read/Write Time Out Duration = 30000`, `Retry Count = 20`).
-2. A DRAM-less SSD behind a USB bridge can stall writes for 20–43 s while it does internal cleanup. Past 30 s, macOS times the command out and resets the device.
-3. Apple ships a quirk table, `com.apple.driver.USBStorageDeviceSpecifics` (173 personalities on macOS 27). Twenty of them set `USB Mass Storage Characteristics → Force BOT Protocol = true`. **The table has no Realtek (`0x0bda`) entries**, so RTL9210 enclosures always get UAS.
+Or, from this folder, run `./check.sh`.
 
-This kext adds that missing entry for `0BDA:9210`, in the same shape as Apple's own entries.
+## What the fix does
 
-## Trade-off
+Your Mac can talk to USB drives in two ways:
 
-BOT is a simpler protocol: no command queueing and no UAS streams. Expect lower peak throughput and IOPS than UAS. In return you avoid the UAS stream timeouts. The personality applies to **every** device that reports `0BDA:9210`, so other RTL9210 enclosures on the same Mac also switch to BOT.
+| Mode | Speed | With this chip |
+|---|---|---|
+| **UAS** (the default, fast mode) | Faster | Can disconnect under heavy writes |
+| **BOT** (the older, simple mode) | Somewhat slower | Avoids the UAS-specific failures |
 
-## Status
+This fix tells your Mac to use **BOT** for this one chip. Apple already does exactly this for about 20 other problem enclosures; this chip just isn't on Apple's list.
 
-**Experimental. Not yet confirmed loading on Apple Silicon.** This kext is unsigned. Read the security section before installing.
+It's a single settings file: **no code runs**, and it's fully removable.
 
-## Security: what installing requires
+## Before you install: the security trade-off ⚠️
 
-Third-party kernel extensions are blocked by default on Apple Silicon. To load this one you will most likely need to:
+Apple only lets extensions like this load if you **lower your Mac's startup security**. Please read this part.
 
-1. Shut down, then hold the power button to enter **Recovery**.
-2. Open **Utilities → Startup Security Utility**, choose your disk, select **Reduced Security**, and enable **"Allow user management of kernel extensions from identified developers."**
-3. Because this kext is **not signed** with a kext-enabled Developer ID, macOS may still refuse it. In that case, the remaining option is disabling System Integrity Protection: in Recovery, open Terminal and run `csrutil disable`.
+- You will need **Reduced Security**, and possibly **Permissive Security** (SIP turned off), which is a bigger downgrade.
+- This fix is **ad-hoc signed**: it has a signature, but not one from an Apple-approved developer. That is why the extra steps are needed.
+- Lower security settings apply to **your whole Mac**, not just this fix.
+- **Status: experimental.** Loading has not yet been confirmed on Apple Silicon (macOS 27).
 
-These settings weaken protections for the whole Mac, not just this kext. Only do this if you accept that trade-off. You can return to Full Security afterwards in the same utility, but this kext will then stop loading.
+**Don't want to lower security?** See [No-security-change alternatives](#no-security-change-alternatives) below.
 
 ## Install
 
+**Step 1: Allow extensions** (Apple Silicon Macs)
+
+1. Shut down. Press and hold the power button until you see **Loading startup options**.
+2. Click **Options**, then go to **Utilities → Startup Security Utility**.
+3. Pick your disk, choose **Reduced Security**, and tick **"Allow user management of kernel extensions from identified developers"**.
+4. Restart.
+
+**Step 2: Install the fix**
+
 ```bash
-git clone https://github.com/sopenlaz0/rtl9210-macos-force-bot.git
-cd rtl9210-macos-force-bot
+git clone https://github.com/sopenlaz0/mac-ssd-enclosure-disconnect-fix.git
+cd mac-ssd-enclosure-disconnect-fix
 ./install.sh
 ```
 
-Approve it in **System Settings → Privacy & Security** if asked, reboot, replug the enclosure, then:
+If it asks, approve it in **System Settings → Privacy & Security**, then restart.
+
+**Step 3: Check it worked**
+
+Replug your enclosure, then run:
 
 ```bash
-./verify.sh
+./check.sh
 ```
 
-Expected: `BOT (IOUSBMassStorageDriver): fix active`. Without the fix you will see `UAS (IOUSBMassStorageUASDriver)`.
+You want to see: **✅ Yes: … is in the stable (BOT) mode, set by this fix.**
 
-## Uninstall
+**If install says macOS refused it:** your Mac is still blocking unapproved extensions. The remaining option is turning off System Integrity Protection: boot into Recovery as in Step 1, open **Utilities → Terminal**, run `csrutil disable`, and restart. That puts your Mac in **Permissive Security**. Only do this if you accept the risk, and see "Undo everything" below for how to turn it back on.
 
-```bash
-./uninstall.sh
-```
+## Undo everything
 
-Then reboot.
+1. Remove the fix:
+   ```bash
+   ./uninstall.sh
+   ```
+2. Restart.
+3. If you turned off SIP: boot into Recovery, open **Terminal**, run `csrutil enable`, and restart. Check with `csrutil status`; it should say **enabled**.
+4. Go back to **Full Security**: Recovery → **Startup Security Utility** → **Full Security**.
 
-## How the personality was derived
+## No-security-change alternatives
 
-The Apple entries were read from the running system's kernel cache with [`ipsw`](https://github.com/blacktop/ipsw):
+- **Get a USB4 / Thunderbolt enclosure with an ASMedia ASM2464PD chip.** On Macs with USB4 or Thunderbolt ports, your SSD then shows up as a native internal-style drive and skips this problem entirely.
+- **Do big transfers on Windows or Linux**, and use the drive on the Mac for smaller copies.
 
-```bash
-ipsw kernel dec /System/Volumes/Preboot/*/boot/*/System/Library/Caches/com.apple.kernelcaches/kernelcache -o .
-ipsw kernel extract kernelcache.decompressed com.apple.iokit.IOUSBMassStorageDriver --output .
-```
+---
 
-The quirk entries live in the kernel cache's prelinked `IOKitPersonalities`, each published by `com.apple.driver.USBStorageDeviceSpecifics`. This kext's personality mirrors the existing `Force BOT Protocol` entries:
+## Technical details
+
+### What we observed
+
+- Hardware: a UGREEN enclosure (Realtek RTL9210, firmware build tag `F001`) with an ADATA Legend 710 2 TB NVMe SSD (DRAM-less), on an M1 Max Mac running macOS 27.
+- During long writes, the kernel log showed:
+  `AppleUSBXHCIStreamingEndpoint ... no transfer ring claimed event`, then `status 0xe00002d6 (timeout)`, then `USB device ... will be reset!` and `hardware connection lost`.
+- On Windows, the same drive and enclosure wrote 100 GB at a steady ~633 MB/s with no errors, peaking at 58 °C. SMART was clean: 0% used, 0 media errors.
+
+### Likely cause (hypothesis)
+
+The failures involve **UAS streams**, a USB feature that only the UAS mode uses. A DRAM-less SSD can pause for a long time during internal cleanup, and the RTL9210's UAS stream handling appears not to survive those pauses on macOS. BOT does not use streams, so it avoids this failure path.
+
+To be precise about the limits:
+
+- Apple's built-in **BOT and UAS** settings both use **30-second** read/write timeouts and 20 retries. Switching to BOT does **not** give commands more time.
+- **Not yet verified:** a before/after test of long writes (with checksums and kernel logs) using this fix. If you test it, please open an issue with your results.
+
+### Apple's quirk table
+
+macOS ships a list of per-device fixes in `com.apple.driver.USBStorageDeviceSpecifics`: 173 entries on macOS 27. Twenty of them set `USB Mass Storage Characteristics → Force BOT Protocol = true`. **None cover Realtek (`0x0bda`).**
+
+This fix adds one entry for `0BDA:9210`, in the same shape as Apple's own:
 
 - `IOClass` = `IOUSBMassStorageInterfaceNub`
 - `IOProviderClass` = `IOUSBHostInterface`
 - `idVendor` = `3034` (0x0bda), `idProduct` = `37392` (0x9210)
 - `bConfigurationValue` = `1`, `bInterfaceNumber` = `0`
 
-## Alternatives that avoid kernel extensions
+The entries were read from the running system's kernel cache with [`ipsw`](https://github.com/blacktop/ipsw):
 
-- Use a **USB4/Thunderbolt enclosure with an ASMedia ASM2464PD bridge**. On a USB4 Mac the SSD appears as native NVMe and skips the USB mass-storage path entirely.
-- Use the enclosure on Windows or Linux for large transfers. Linux already disables UAS for some RTL9210 devices in its `usb-storage` quirks.
+```bash
+ipsw kernel dec /System/Volumes/Preboot/*/boot/*/System/Library/Caches/com.apple.kernelcaches/kernelcache -o .
+ipsw kernel extract kernelcache.decompressed com.apple.iokit.IOUSBMassStorageDriver --output .
+```
+
+### Side effects
+
+- **Every** enclosure that reports `0BDA:9210` switches to BOT on this Mac, not just one.
+- BOT has no command queueing, so expect lower peak speed than UAS.
+
+### Linux
+
+Linux turns UAS off for at least one RTL9210-based product (HIKSEMI MD202) in its USB storage quirks. For other RTL9210 devices you can do the same manually with the kernel parameter `usb-storage.quirks=0bda:9210:u`.
+
+### Files
+
+| File | What it does |
+|---|---|
+| `RTL9210ForceBOT.kext` | The fix: one settings file (`Info.plist`), ad-hoc signed |
+| `install.sh` | Copies it into `/Library/Extensions` and asks macOS to load it |
+| `check.sh` | Shows whether the fix is installed and whether your enclosure uses it |
+| `uninstall.sh` | Removes it |
 
 ## License
 

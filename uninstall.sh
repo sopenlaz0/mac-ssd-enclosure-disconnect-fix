@@ -1,12 +1,22 @@
 #!/bin/zsh
-# Remove the RTL9210ForceBOT codeless kext. Reboot afterwards to fully drop it.
+# Remove the fix. Restart afterwards. See the README for restoring full security.
 set -euo pipefail
 
+BUNDLE="io.github.sopenlaz0.RTL9210ForceBOT"
 DEST="/Library/Extensions/RTL9210ForceBOT.kext"
+
 if [[ ! -d "$DEST" ]]; then
-  echo "Not installed ($DEST missing)."; exit 0
+  echo "The fix is not installed ($DEST is missing). Nothing to do."
+  exit 0
 fi
-sudo kmutil unload -b io.github.sopenlaz0.RTL9210ForceBOT 2>/dev/null || true
+
+echo "Removing the fix (your Mac password is needed)..."
+sudo kmutil unload -b "$BUNDLE" || echo "(It was not loaded right now; continuing.)"
 sudo rm -rf "$DEST"
-sudo kmutil clear-staging 2>/dev/null || true
-echo "Removed. Reboot to return to the default (UAS) behaviour."
+
+if [[ -d "$DEST" ]]; then
+  echo "❌ Could not remove $DEST" >&2
+  exit 1
+fi
+echo "✅ Removed. Restart your Mac to go back to the default behaviour."
+echo "   To restore full security afterwards, see 'Undo everything' in the README."
