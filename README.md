@@ -1,62 +1,52 @@
 # Mac SSD Enclosure Disconnect Fix
 
-**Does your external SSD keep disconnecting from your Mac during big copies?**
+A fix for USB SSD enclosures that disconnect from a Mac during large copies. It applies to enclosures built on the Realtek RTL9210 chip, which is used by UGREEN, ORICO, Sabrent and many unbranded brands.
 
-You might be hitting a known problem between macOS and one very common USB SSD enclosure chip. This repo is a small, undoable fix for it.
+The typical symptom: the drive works fine for small copies, but during a long write (tens of GB) it freezes or disappears, and macOS shows "Disk Not Ejected Properly". The same drive usually works fine on Windows.
 
-## Is this you?
-
-- Your NVMe SSD sits in a USB-C enclosure (UGREEN, ORICO, Sabrent and many no-name brands).
-- Copying a lot of data (tens of GB) makes it **freeze, disappear, or show "Disk Not Ejected Properly"**.
-- **The same drive works fine on Windows.**
-
-## Check if your enclosure is affected (30 seconds)
+## Check whether your enclosure has this chip
 
 1. Plug the enclosure into your Mac.
-2. Hold **Option** and click the Apple menu  → **System Information**.
-3. Click **USB** in the sidebar, then click your enclosure.
-4. Look at the numbers:
-   - **Vendor ID: `0x0bda`** (Realtek)
-   - **Product ID: `0x9210`**
+2. Hold Option, click the Apple menu, and choose System Information.
+3. Select USB in the sidebar, then select your enclosure.
+4. Check that Vendor ID is `0x0bda` and Product ID is `0x9210`.
 
-**If both match, this fix is for you.** If they don't, this fix won't do anything for your enclosure.
+If both match, the fix applies to your enclosure. If not, it won't change anything.
 
-Or, from this folder, run `./check.sh`.
+You can also run `./check.sh` from this folder.
 
-## What the fix does
+## What it does
 
-Your Mac can talk to USB drives in two ways:
+macOS can talk to USB drives in two modes:
 
-| Mode | Speed | With this chip |
-|---|---|---|
-| **UAS** (the default, fast mode) | Faster | Can disconnect under heavy writes |
-| **BOT** (the older, simple mode) | Somewhat slower | Avoids the UAS-specific failures |
+- **UAS** is the default. It's faster, but with this chip it can disconnect under heavy writes.
+- **BOT** is older and simpler. It's somewhat slower and avoids the UAS-specific failures.
 
-This fix tells your Mac to use **BOT** for this one chip. Apple already does exactly this for about 20 other problem enclosures; this chip just isn't on Apple's list.
+This fix makes macOS use BOT for this chip only. Apple already does the same for about 20 other enclosures; this chip just isn't on Apple's list.
 
-It's a single settings file: **no code runs**, and it's fully removable.
+The fix is a single settings file. No code runs, and you can remove it at any time.
 
-## Before you install: the security trade-off ⚠️
+## Security trade-off
 
-Apple only lets extensions like this load if you **lower your Mac's startup security**. Please read this part.
+macOS only loads extensions like this one if you lower your Mac's startup security, so read this before installing.
 
-- You will need **Reduced Security**, and possibly **Permissive Security** (SIP turned off), which is a bigger downgrade.
-- This fix is **ad-hoc signed**: it has a signature, but not one from an Apple-approved developer. That is why the extra steps are needed.
-- Lower security settings apply to **your whole Mac**, not just this fix.
-- **Status: experimental.** Loading has not yet been confirmed on Apple Silicon (macOS 27).
+- You need Reduced Security, and possibly Permissive Security (SIP turned off), which is a bigger downgrade.
+- The fix is ad-hoc signed. It has a signature, but not one from an Apple-approved developer, which is why the extra steps are needed.
+- The lower security settings apply to your whole Mac, not just this fix.
+- This is experimental. Loading hasn't been confirmed yet on Apple Silicon (macOS 27).
 
-**Don't want to lower security?** See [No-security-change alternatives](#no-security-change-alternatives) below.
+If you'd rather not lower security, see [Alternatives](#alternatives) below.
 
 ## Install
 
-**Step 1: Allow extensions** (Apple Silicon Macs)
+### 1. Allow extensions (Apple Silicon Macs)
 
-1. Shut down. Press and hold the power button until you see **Loading startup options**.
-2. Click **Options**, then go to **Utilities → Startup Security Utility**.
-3. Pick your disk, choose **Reduced Security**, and tick **"Allow user management of kernel extensions from identified developers"**.
+1. Shut down, then press and hold the power button until you see Loading startup options.
+2. Click Options, then go to Utilities → Startup Security Utility.
+3. Select your disk, choose Reduced Security, and tick "Allow user management of kernel extensions from identified developers".
 4. Restart.
 
-**Step 2: Install the fix**
+### 2. Install the fix
 
 ```bash
 git clone https://github.com/sopenlaz0/mac-ssd-enclosure-disconnect-fix.git
@@ -64,9 +54,9 @@ cd mac-ssd-enclosure-disconnect-fix
 ./install.sh
 ```
 
-If it asks, approve it in **System Settings → Privacy & Security**, then restart.
+If it asks, approve it in System Settings → Privacy & Security, then restart.
 
-**Step 3: Check it worked**
+### 3. Check that it worked
 
 Replug your enclosure, then run:
 
@@ -74,9 +64,9 @@ Replug your enclosure, then run:
 ./check.sh
 ```
 
-You want to see: **✅ Yes: … is in the stable (BOT) mode, set by this fix.**
+It should report that your enclosure is in BOT mode, set by this fix.
 
-**If install says macOS refused it:** your Mac is still blocking unapproved extensions. The remaining option is turning off System Integrity Protection: boot into Recovery as in Step 1, open **Utilities → Terminal**, run `csrutil disable`, and restart. That puts your Mac in **Permissive Security**. Only do this if you accept the risk, and see "Undo everything" below for how to turn it back on.
+If the installer says macOS refused it, your Mac is still blocking unapproved extensions. The remaining option is turning off System Integrity Protection: boot into Recovery as in Step 1, open **Utilities → Terminal**, run `csrutil disable`, and restart. That puts your Mac in Permissive Security, so only do it if you accept the risk. "Undo everything" below explains how to turn it back on.
 
 ## Undo everything
 
@@ -85,13 +75,13 @@ You want to see: **✅ Yes: … is in the stable (BOT) mode, set by this fix.**
    ./uninstall.sh
    ```
 2. Restart.
-3. If you turned off SIP: boot into Recovery, open **Terminal**, run `csrutil enable`, and restart. Check with `csrutil status`; it should say **enabled**.
-4. Go back to **Full Security**: Recovery → **Startup Security Utility** → **Full Security**.
+3. If you turned off SIP, boot into Recovery, open Terminal, run `csrutil enable`, and restart. `csrutil status` should then say enabled.
+4. To go back to Full Security, open Recovery → Startup Security Utility and choose Full Security.
 
-## No-security-change alternatives
+## Alternatives
 
-- **Get a USB4 / Thunderbolt enclosure with an ASMedia ASM2464PD chip.** On Macs with USB4 or Thunderbolt ports, your SSD then shows up as a native internal-style drive and skips this problem entirely.
-- **Do big transfers on Windows or Linux**, and use the drive on the Mac for smaller copies.
+- Use a USB4 or Thunderbolt enclosure with an ASMedia ASM2464PD chip. On a Mac with USB4 or Thunderbolt ports, the SSD then shows up like an internal drive and avoids this problem.
+- Do large transfers on Windows or Linux, and keep Mac copies small.
 
 ---
 
