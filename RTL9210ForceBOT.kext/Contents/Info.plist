@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>English</string>
+	<key>CFBundleIdentifier</key>
+	<string>io.github.sopenlaz0.RTL9210ForceBOT</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>RTL9210ForceBOT</string>
+	<key>CFBundlePackageType</key>
+	<string>KEXT</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0.0</string>
+	<key>CFBundleVersion</key>
+	<string>1.0.0</string>
+	<key>IOKitPersonalities</key>
+	<dict>
+		<!--
+		Codeless personality. Same shape as the entries Apple ships in
+		com.apple.driver.USBStorageDeviceSpecifics: it binds Apple's own
+		IOUSBMassStorageInterfaceNub to the Realtek RTL9210 bridge and asks it
+		to use Bulk-Only Transport (BOT) instead of UAS.
+		-->
+		<key>RTL9210_0BDA_9210_ForceBOT</key>
+		<dict>
+			<key>CFBundleIdentifier</key>
+			<string>com.apple.iokit.IOUSBMassStorageDriver</string>
+			<key>IOClass</key>
+			<string>IOUSBMassStorageInterfaceNub</string>
+			<key>IOProviderClass</key>
+			<string>IOUSBHostInterface</string>
+			<key>Physical Interconnect</key>
+			<string>USB</string>
+			<key>Physical Interconnect Location</key>
+			<string>External</string>
+			<key>USB Mass Storage Characteristics</key>
+			<dict>
+				<key>Force BOT Protocol</key>
+				<string>true</string>
+			</dict>
+			<key>bConfigurationValue</key>
+			<integer>1</integer>
+			<key>bInterfaceNumber</key>
+			<integer>0</integer>
+			<key>idProduct</key>
+			<integer>37392</integer>
+			<key>idVendor</key>
+			<integer>3034</integer>
+		</dict>
+	</dict>
+	<key>OSBundleRequired</key>
+	<string>Local-Root</string>
+</dict>
+</plist>
