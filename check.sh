@@ -26,7 +26,7 @@ echo
 echo "2) Is your enclosure using it?"
 # Walk the USB tree at every depth (devices behind hubs included) and attribute each
 # storage driver and personality to its nearest USB-device ancestor.
-ioreg -r -c IOUSBHostDevice -l -w0 | awk -v bundle="$BUNDLE" '
+ioreg -r -c IOUSBHostDevice -l -w0 | LC_ALL=C awk -v bundle="$BUNDLE" '
   function pop(ind) { while (sp > 0 && sind[sp] >= ind) sp-- }
   /\+-o / {
     ind = index($0, "+-o"); pop(ind)
