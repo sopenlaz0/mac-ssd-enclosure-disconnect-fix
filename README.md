@@ -33,7 +33,7 @@ macOS only loads extensions like this one if you lower your Mac's startup securi
 - On Apple Silicon you need Reduced Security **and** SIP's kext-signing check turned off (`csrutil enable --without kext`). Reduced Security alone is not enough: macOS rejects the fix with "Bad code signature".
 - The fix is ad-hoc signed. It has a signature, but not one from an Apple-approved developer, which is why the extra steps are needed.
 - The lower security settings apply to your whole Mac, not just this fix.
-- Tested on an M4 MacBook Air (macOS 27.0.1): it loads, and two 50 GB writes passed. See [Test results](#test-results). Still a small sample, so keep backups.
+- Tested on an M4 MacBook Air (macOS 27.0.1): it loads, and two 50 GB writes passed, but the drive still dropped later under Docker. It's an improvement, not a cure. See [Test results](#test-results).
 
 If you'd rather not lower security, see [Alternatives](#alternatives) below.
 
@@ -120,6 +120,9 @@ Same UGREEN RTL9210 enclosure and ADATA Legend 710 2 TB, on an **M4 MacBook Air,
 | UAS (no fix) | APFS, just erased | ❌ Stalled after 10 MB, then `Input/output error` and dropped |
 | BOT (this fix) | APFS | ✅ 50 GiB in 113 s (~475 MB/s), read back in 70 s, SHA-256 matched |
 | BOT (this fix) | APFS | ✅ 50 GiB in 117 s (~460 MB/s), read back in 70 s, SHA-256 matched |
+| BOT (this fix) | APFS | ❌ Real use: Docker Desktop copied its disk image there (30 min `cp -Rp`), then started its VM from it. Within a minute the drive dropped: `AppleUSBIORequest` errors, `usb reset`, and repeated re-enumeration. The SSD then stayed undetected until it was replugged about an hour later |
+
+**So BOT reduces the drops but doesn't stop them.** It survived two long sequential writes that UAS failed, but not a VM's mixed I/O right after a long copy. Don't keep anything on these drives that isn't backed up elsewhere, and don't run Docker or VMs from them.
 
 Loading notes:
 
