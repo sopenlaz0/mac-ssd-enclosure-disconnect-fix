@@ -30,10 +30,10 @@ The fix is a single settings file. No code runs, and you can remove it at any ti
 
 macOS only loads extensions like this one if you lower your Mac's startup security, so read this before installing.
 
-- You need Reduced Security, and possibly Permissive Security (SIP turned off), which is a bigger downgrade.
+- On Apple Silicon you need Reduced Security **and** SIP's kext-signing check turned off (`csrutil enable --without kext`). Reduced Security alone is not enough: macOS rejects the fix with "Bad code signature".
 - The fix is ad-hoc signed. It has a signature, but not one from an Apple-approved developer, which is why the extra steps are needed.
 - The lower security settings apply to your whole Mac, not just this fix.
-- This is experimental. Loading hasn't been confirmed yet on Apple Silicon (macOS 27).
+- Tested on an M4 MacBook Air (macOS 27.0.1): it loads, and two 50 GB writes passed, but the drive still dropped later under Docker. It's an improvement, not a cure. See [Test results](#test-results).
 
 If you'd rather not lower security, see [Alternatives](#alternatives) below.
 
@@ -44,7 +44,14 @@ If you'd rather not lower security, see [Alternatives](#alternatives) below.
 1. Shut down, then press and hold the power button until you see Loading startup options.
 2. Click Options, then go to Utilities → Startup Security Utility.
 3. Select your disk, choose Reduced Security, and tick "Allow user management of kernel extensions from identified developers".
-4. Restart.
+4. Go to Utilities → Terminal and run:
+   ```bash
+   csrutil enable --without kext
+   ```
+   This turns off only SIP's kext-signing check. Filesystem protection and the rest of SIP stay on. macOS warns that it's an unsupported configuration; that's expected.
+5. Restart.
+
+Recovery runs instead of macOS, so keep these steps on your phone or on paper.
 
 ### 2. Install the fix
 
@@ -66,7 +73,7 @@ Replug your enclosure, then run:
 
 It should report that your enclosure is in BOT mode, set by this fix.
 
-If the installer says macOS refused it, your Mac is still blocking unapproved extensions. The remaining option is turning off System Integrity Protection: boot into Recovery as in Step 1, open **Utilities → Terminal**, run `csrutil disable`, and restart. That puts your Mac in Permissive Security, so only do it if you accept the risk. "Undo everything" below explains how to turn it back on.
+If the installer says macOS refused it with "Bad code signature" (exit code 29), SIP's kext-signing check is still on. Run `csrutil status`: it should list `Kext Signing: disabled`. If not, repeat step 1.4. If `--without kext` still isn't enough on your Mac, the last option is `csrutil disable`, which turns off all of SIP (Permissive Security), so only do it if you accept the risk. "Undo everything" below explains how to turn it back on.
 
 ## Undo everything
 
@@ -75,7 +82,7 @@ If the installer says macOS refused it, your Mac is still blocking unapproved ex
    ./uninstall.sh
    ```
 2. Restart.
-3. If you turned off SIP, boot into Recovery, open Terminal, run `csrutil enable`, and restart. `csrutil status` should then say enabled.
+3. If you changed SIP (`--without kext` or `disable`), boot into Recovery, open Terminal, run `csrutil enable`, and restart. `csrutil status` should then say enabled.
 4. To go back to Full Security, open Recovery → Startup Security Utility and choose Full Security.
 
 ## Alternatives
@@ -101,7 +108,30 @@ The failures involve **UAS streams**, a USB feature that only the UAS mode uses.
 To be precise about the limits:
 
 - Apple's built-in **BOT and UAS** settings both use **30-second** read/write timeouts and 20 retries. Switching to BOT does **not** give commands more time.
-- **Not yet verified:** a before/after test of long writes (with checksums and kernel logs) using this fix. If you test it, please open an issue with your results.
+- Speed: in the test below, BOT was faster than UAS, probably because UAS kept stalling. Your results may differ.
+
+### Test results
+
+Same UGREEN RTL9210 enclosure and ADATA Legend 710 2 TB, on an **M4 MacBook Air, macOS 27.0.1**, plugged straight into a USB-C port (10 Gb/s). Each test writes 50 GiB of random data with `dd`, hashing it on the way in, then reads the file back and compares SHA-256.
+
+| Mode | Volume | Result |
+|---|---|---|
+| UAS (no fix) | exFAT | ❌ Enclosure dropped off USB at ~45 GiB (`Device not configured`), ~254 MB/s |
+| UAS (no fix) | APFS, just erased | ❌ Stalled after 10 MB, then `Input/output error` and dropped |
+| BOT (this fix) | APFS | ✅ 50 GiB in 113 s (~475 MB/s), read back in 70 s, SHA-256 matched |
+| BOT (this fix) | APFS | ✅ 50 GiB in 117 s (~460 MB/s), read back in 70 s, SHA-256 matched |
+| BOT (this fix) | APFS | ❌ Real use: Docker Desktop copied its disk image there (30 min `cp -Rp`), then started its VM from it. Within a minute the drive dropped: `AppleUSBIORequest` errors, `usb reset`, and repeated re-enumeration. The SSD then stayed undetected until it was replugged about an hour later |
+
+**So BOT reduces the drops but doesn't stop them.** It survived two long sequential writes that UAS failed, but not a VM's mixed I/O right after a long copy. Don't keep anything on these drives that isn't backed up elsewhere, and don't run Docker or VMs from them.
+
+Loading notes:
+
+- Reduced Security alone: `kmutil load` refused with `Authenticating extension failed: Bad code signature` (exit code 29), although `codesign --verify` reports the bundle as valid.
+- After `csrutil enable --without kext`: loaded, and the enclosure's interface switched from protocol 98 (UAS) to 80 (BOT).
+
+After the UAS failures the SSD once stopped being detected anywhere, even on Windows. Leaving it powered and idle in a PC's M.2 slot (at the BIOS screen) brought it back.
+
+Not yet covered: kernel logs from the BOT runs, longer soak tests, other drives, and Intel Macs. If you test it, please open an issue with your results.
 
 ### Apple's quirk table
 
@@ -124,7 +154,7 @@ ipsw kernel extract kernelcache.decompressed com.apple.iokit.IOUSBMassStorageDri
 ### Side effects
 
 - **Every** enclosure that reports `0BDA:9210` switches to BOT on this Mac, not just one.
-- BOT has no command queueing, so expect lower peak speed than UAS.
+- BOT has no command queueing, so on a drive that works fine in UAS, expect lower peak speed.
 
 ### Linux
 
